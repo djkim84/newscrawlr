@@ -1,0 +1,208 @@
+mobile <- read.csv('mobile2014_00.csv', stringsAsFactors = F)
+
+dim(mobile)
+names(mobile)
+
+mobile[2,]
+mobile[1035,]
+
+table(mobile$Sentiment)
+
+install.packages('tm')
+library(tm)
+#DocumentTermMatrix 만들기
+
+corpus <- VCorpus(VectorSource(mobile$Texts))
+
+##  제거할 단어 목록 확인
+stopwords()
+stopwords("SMART")
+
+dtm <- DocumentTermMatrix(corpus,
+                          control = list(tolower = T,
+                                         removePunctuation = T,
+                                         removeNumbers = T,
+                                         stopwords = stopwords("SMART"),
+                                         weighting = weightTfIdf))
+
+dtm
+
+
+
+
+
+install.packages('glmnet')
+library(glmnet)
+#X, Y 할당
+X <- as.matrix(dtm)
+Y <- mobile$Sentiment
+
+#회귀분석
+res.lm <- glmnet(X, Y, family = "binomial", lambda = 0)
+
+#회귀분석 결과 회귀계수 정렬하기
+coef.lm <- coef(res.lm)[,1]
+pos.lm <- coef.lm[coef.lm > 0]
+neg.lm <- coef.lm[coef.lm < 0]
+pos.lm <- sort(pos.lm, decreasing = T)
+neg.lm <- sort(neg.lm, decreasing = F)
+
+
+#라쏘 회귀분석
+set.seed(12345)
+res.lasso <- cv.glmnet(X, Y, family = "binomial", alpha = 1,
+                       nfolds = 4, type.measure = "class")
+
+#라쏘 회귀분석 결과 그래프
+plot(res.lasso)
+plot(res.lasso$glmnet.fit, xvar = "lambda")
+
+#라쏘 회귀분석 결과 회귀계수 정렬하기
+options(scipen = 100)
+coef.lasso <- coef(res.lasso, s = "lambda.min")[,1]
+pos.lasso <- coef.lasso[coef.lasso > 0]
+neg.lasso <- coef.lasso[coef.lasso < 0]
+pos.lasso <- sort(pos.lasso, decreasing = T)
+neg.lasso <- sort(neg.lasso, decreasing = F)
+
+
+
+#릿지 회귀분석
+set.seed(12345)
+res.ridge <- cv.glmnet(X, Y, family = "binomial", alpha = 0,
+                       nfolds = 4, type.measure = "class")
+
+#릿지 회귀분석 결과 그래프
+plot(res.ridge)
+plot(res.ridge$glmnet.fit, xvar = "lambda")
+
+#릿지 회귀분석 결과 회귀계수 정렬하기
+coef.ridge <- coef(res.ridge, s = "lambda.min")[,1]
+pos.ridge <- coef.ridge[coef.ridge > 0]
+neg.ridge <- coef.ridge[coef.ridge < 0]
+pos.ridge <- sort(pos.ridge, decreasing = T)
+neg.ridge <- sort(neg.ridge, decreasing = F)
+
+#엘라스틱넷 회귀분석
+set.seed(12345)
+res.elastic <- cv.glmnet(X, Y, family = "binomial", alpha = .5,
+                         nfolds = 4, type.measure="class")
+
+#엘라스틱넷 회귀분석 결과 그래프
+plot(res.elastic)
+plot(res.elastic$glmnet.fit, xvar = "lambda")
+
+#엘라스틱넷 회귀분석 결과 및 회귀계수 정렬하기
+coef.elastic <- coef(res.elastic, s = "lambda.min")[,1]
+pos.elastic <- coef.elastic[coef.elastic > 0]
+neg.elastic <- coef.elastic[coef.elastic < 0]
+pos.elastic <- sort(pos.elastic, decreasing = T)
+neg.elastic <- sort(neg.elastic, decreasing = F)
+
+
+
+#감정사전 단어 갯수 세기
+length(pos.lm)
+length(neg.lm)
+
+length(pos.lasso)
+length(neg.lasso)
+
+length(pos.ridge)
+length(neg.ridge)
+
+length(pos.elastic)
+length(neg.elastic)
+
+
+#감정사전 csv 파일로 저장하기
+write.csv(pos.lm, "pos.lm.csv")
+write.csv(neg.lm, "neg.lm.csv")
+
+write.csv(pos.lasso, "pos.lasso.csv")
+write.csv(neg.lasso, "neg.lasso.csv")
+
+write.csv(pos.ridge, "pos.ridge.csv")
+write.csv(neg.ridge, "neg.ridge.csv")
+
+write.csv(pos.elastic, "pos.elastic.csv")
+write.csv(neg.elastic, "neg.elastic.csv")
+
+getwd()
+
+
+
+
+#라이브러리 블러오기
+
+
+
+install.packages('devtools')
+library(devtools) # try install.packages('devtools') if you don't have it installed
+install_github("mannau/tm.plugin.sentiment")
+library(tm.plugin.sentiment)
+#극(polarity) 감정 점수 계산하기
+senti.lm <- polarity(dtm, names(pos.lm), names(neg.lm))
+senti.lasso <- polarity(dtm, names(pos.lasso), names(neg.lasso))
+senti.ridge <- polarity(dtm, names(pos.ridge), names(neg.ridge))
+senti.elastic <- polarity(dtm, names(pos.elastic), names(neg.elastic))
+
+#저장된 단어사전(csv파일)으로부터 극(polarity) 감정 점수 계산하기
+pos.lm.csv <- read.csv('pos.lm.csv')
+neg.lm.csv <- read.csv('neg.lm.csv')
+pos.lasso.csv <- read.csv('pos.lasso.csv')
+neg.lasso.csv <- read.csv('neg.lasso.csv')
+
+senti.lm <- polarity(dtm, pos.lm.csv[,1], neg.lm.csv[,1])
+senti.lasso <- polarity(dtm, pos.lasso.csv[,1], neg.lasso.csv[,1])
+
+
+#극(polarity) 감정 점수 0 or 1로 변환하기
+senti.lm.b <- ifelse(senti.lm > 0, 1, 0)
+senti.lasso.b <- ifelse(senti.lasso > 0, 1, 0)
+senti.ridge.b <- ifelse(senti.ridge > 0, 1, 0)
+senti.elastic.b <- ifelse(senti.elastic > 0, 1, 0)
+
+#정확도 계산하기
+#caret 현재 버전은 동영상과 달리 confusionMatrix에 factor로 변환해서 넣어줘야 합니다.
+install.packages('caret')
+library(caret)
+install.packages('dplyr')
+library(dplyr)
+confusionMatrix(factor(senti.lm.b), factor(mobile$Sentiment))
+confusionMatrix(factor(senti.lasso.b), factor(mobile$Sentiment))
+confusionMatrix(factor(senti.ridge.b), factor(mobile$Sentiment))
+confusionMatrix(factor(senti.elastic.b), factor(mobile$Sentiment))
+
+#더 엄밀한 정확도를 구하기 위해 테스트(test) 데이터 불러오기
+mobile.test <- read.csv("mobile2014_test.csv", stringsAsFactors = F)
+dim(mobile.test)
+names(mobile.test)
+
+#테스트(test) 데이터의 DocumentTermMatrix 만들기
+corpus <- Corpus(VectorSource(mobile.test$Texts))
+dtm.test <- DocumentTermMatrix(corpus,
+                               control = list(tolower = T,
+                                              removePunctuation = T,
+                                              removeNumbers = T,
+                                              stopwords = stopwords("SMART"),
+                                              weighting = weightTfIdf,
+                                              dictionary = Terms(dtm)))
+
+#테스트(test) 데이터의 극(polarity) 감정 점수 계산하기
+senti.lm.test <- polarity(dtm.test, names(pos.lm), names(neg.lm))
+senti.lasso.test <- polarity(dtm.test, names(pos.lasso), names(neg.lasso))
+senti.ridge.test <- polarity(dtm.test, names(pos.ridge), names(neg.ridge))
+senti.elastic.test <- polarity(dtm.test, names(pos.elastic), names(neg.elastic))
+
+#테스트(test) 데이터의 극(polarity) 감정 점수 0 or 1로 변환하기
+senti.lm.b.test <- ifelse(senti.lm.test > 0, 1, 0)
+senti.lasso.b.test <- ifelse(senti.lasso.test > 0, 1, 0)
+senti.ridge.b.test <- ifelse(senti.ridge.test > 0, 1, 0)
+senti.elastic.b.test <- ifelse(senti.elastic.test > 0, 1, 0)
+
+#테스트(test) 데이터의 정확도 계산하기
+confusionMatrix(factor(senti.lm.b.test), factor(mobile.test$Sentiment))
+confusionMatrix(factor(senti.lasso.b.test), factor(mobile.test$Sentiment))
+confusionMatrix(factor(senti.ridge.b.test), factor(mobile.test$Sentiment))
+confusionMatrix(factor(senti.elastic.b.test), factor(mobile.test$Sentiment))
